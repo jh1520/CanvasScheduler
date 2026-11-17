@@ -3,3 +3,4 @@ courseInfo.json
 credentials.json
 token.pickle
 __pycache__/
+.venv/
