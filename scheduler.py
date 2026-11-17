@@ -11,14 +11,15 @@ KST = datetime.timezone(datetime.timedelta(hours=9), 'KST')
 # 캘린더에서 뺄 비교과 과목: 과목명 앞에 [OO센터] 또는 (OO센터)가 붙는 형식
 EXCLUDE_COURSE_PATTERN = re.compile(r'^[\[(][^\])]*센터[\])]')
 
-# 캘린더에서 뺄 과제: 이름에 이 단어가 들어간 항목 (성적 입력용 칸)
-EXCLUDE_ASSIGNMENT_KEYWORDS = ['성적']
+# 캘린더에서 뺄 과제: 이름이 이 말로 끝나는 항목 (시험, 성적 입력용 칸)
+# '중간고사', '중간고사 성적'은 빠지고 '기말고사 프로젝트', '중간고사 실습'은 남음
+EXCLUDE_NAME_ENDINGS = ('고사', '성적')
 
 # 어떤 날짜를 썼는지 일정 제목 뒤에 붙일 표시
+# 열리는 시각(unlock_at)만 있는 항목은 수업 중 퀴즈라서 캘린더에 넣지 않음
 TAGS = {
     'due': '',                  # 교수님이 마감일을 지정한 과제
     'lock': ' (종료일 기준)',    # 마감일 없이 제출 종료만 걸린 과제
-    'unlock': ' (열림)',         # 열리는 시각만 있는 과제 (수업 중 퀴즈 등)
 }
 
 
@@ -52,7 +53,7 @@ def getAssignments(includePast=False):
 
     assignments = []  # 캘린더에 넣을 과제
     undated = []      # 날짜 정보가 하나도 없는 과제
-    skipped = {'courses': 0, 'items': 0}  # 제외한 비교과 과목 수, 성적 항목 수
+    skipped = {'courses': 0, 'items': 0, 'inClass': 0}  # 제외한 비교과 과목, 성적·시험 항목, 수업 중(딥러닝) 항목 수
 
     # 원본: get_upcoming_events() → 마감일(due_at)이 있는 과제만 나옴
     # 개선: 이번 학기 과목을 모두 돌면서 과제 목록을 직접 가져옴
@@ -70,11 +71,14 @@ def getAssignments(includePast=False):
             continue
 
         for a in courseAssignments:
-            if any(word in a.name for word in EXCLUDE_ASSIGNMENT_KEYWORDS):
+            if a.name.strip().endswith(EXCLUDE_NAME_ENDINGS):
                 skipped['items'] += 1
                 continue
 
             date, kind = pickDate(a)
+            if kind == 'unlock':  # 열리는 시각만 있음 = 수업 시간에 하는 항목
+                skipped['inClass'] += 1
+                continue
             if date is None:
                 undated.append((label, a.name))
             elif includePast or date >= now:
@@ -104,7 +108,8 @@ def main():
     includePast = '--all' in sys.argv  # 이미 지난 과제도 포함 (--dry-run과 함께 확인용으로 사용)
 
     assignments, undated, skipped = getAssignments(includePast)
-    print(f"제외: 비교과 과목 {skipped['courses']}개, 성적 항목 {skipped['items']}개")
+    print(f"제외: 비교과 과목 {skipped['courses']}개, 성적·시험 항목 {skipped['items']}개, "
+          f"수업 중 항목(열리는 시각만 있음) {skipped['inClass']}개")
 
     if dryRun:
         print(f'\n[테스트 모드] 캘린더에 등록할 과제 {len(assignments)}개')
@@ -117,10 +122,7 @@ def main():
             if a['name'] in descs:
                 print('already made:', a['name'])
                 continue
-            if a['kind'] == 'unlock':
-                start, end = a['date'], a['date'] + datetime.timedelta(minutes=30)
-            else:
-                start, end = a['date'] - datetime.timedelta(hours=1), a['date']
+            start, end = a['date'] - datetime.timedelta(hours=1), a['date']
             summary = f"[{a['course']}] {a['name']}{TAGS[a['kind']]}"
             googCalendar.createEvent(summary, start.isoformat(), end.isoformat(),
                                      description=a['name'], timeZone='Asia/Seoul')
