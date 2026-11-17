@@ -103,6 +103,11 @@ def grabDescriptions(googCalendar):
     return descs
 
 
+def eventTitle(a):
+    """캘린더 일정 제목: '[과목] 과제 이름 마감 (종료일 기준)'"""
+    return f"[{a['course']}] {a['name']} 마감{TAGS[a['kind']]}"
+
+
 def main():
     dryRun = '--dry-run' in sys.argv   # 구글 캘린더에 넣지 않고 화면에만 출력
     includePast = '--all' in sys.argv  # 이미 지난 과제도 포함 (--dry-run과 함께 확인용으로 사용)
@@ -114,7 +119,7 @@ def main():
     if dryRun:
         print(f'\n[테스트 모드] 캘린더에 등록할 과제 {len(assignments)}개')
         for a in assignments:
-            print(f"  {a['date']:%m/%d %H:%M}  [{a['course']}] {a['name']}{TAGS[a['kind']]}")
+            print(f"  {a['date']:%m/%d %H:%M}  {eventTitle(a)}")
     else:
         import googCalendar  # 구글 라이브러리는 실제로 등록할 때만 불러옴
         descs = grabDescriptions(googCalendar)
@@ -123,8 +128,7 @@ def main():
                 print('already made:', a['name'])
                 continue
             start, end = a['date'] - datetime.timedelta(hours=1), a['date']
-            summary = f"[{a['course']}] {a['name']}{TAGS[a['kind']]}"
-            googCalendar.createEvent(summary, start.isoformat(), end.isoformat(),
+            googCalendar.createEvent(eventTitle(a), start.isoformat(), end.isoformat(),
                                      description=a['name'], timeZone='Asia/Seoul')
 
     if undated:
